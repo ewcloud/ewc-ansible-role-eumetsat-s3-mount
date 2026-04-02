@@ -49,3 +49,95 @@
       - ( ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] in ['9', '8']) or (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_major_version'] in ['24', '22'])
     fail_msg: "Supports RockyLinux 8, RockyLinux 9, Ubuntu 22 and Ubuntu 24. Detected: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}"
     success_msg: "Running supported {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }} distribution."
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - "{{ item }}"
+    state: present
+    allow_downgrade: false
+  loop:
+    - fuse3
+    - fuse-overlayfs
+    - curl
+    - unzip
+
+- name: Ensure fuse3 is available and functional
+  ansible.builtin.command: fusermount3 -V
+  changed_when: false
+  register: fusermount_check
+  failed_when: fusermount_check.rc != 0
+
+- name: Ensure fusermount3 symlink exists (compatibility)
+  ansible.builtin.file:
+    src: /usr/bin/fusermount3
+    dest: /usr/bin/fusermount
+    state: link
+  when:
+    - fusermount_check.stdout is defined
+    - "'fusermount3' not in fusermount_check.stdout"
+
+- name: Initialize internal nobs for rclond installation
+  ansible.builtin.set_fact:
+    rclone_version: "1.73.3"
+    rclone_config_name: "eumetsat-data-buckets"
+    rclone_nonsecret_config_file: /etc/eum_data_bucket_mount_credentials
+    rclone_cache_dir: "/var/cache/rclone"
+
+- name: Determine rclone download URLs and checksum
+  ansible.builtin.set_fact:
+    rclone_download_base: "https://downloads.rclone.org/v{{ rclone_version }}"
+    rclone_zip_file: "rclone-v{{ rclone_version }}-linux-amd64.zip"
+    rclone_checksum_url: "https://downloads.rclone.org/v{{ rclone_version }}/SHA256SUMS"
+    rclone_binary_path: "/usr/bin/rclone"
+
+- name: Download rclone SHA256 checksum file
+  ansible.builtin.get_url:
+    url: "{{ rclone_checksum_url }}"
+    dest: "/tmp/rclone-SHA256SUMS-{{ rclone_version }}"
+    mode: '0644'
+    force: true
+  register: checksum_download
+
+- name: Extract expected SHA256 checksum for linux-amd64 zip
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -E 'linux-amd64\.zip$' /tmp/rclone-SHA256SUMS-{{ rclone_version }} | awk '{print $1}'
+  args:
+    executable: /bin/bash
+  register: rclone_expected_checksum
+  changed_when: true
+
+- name: Download rclone zip archive
+  ansible.builtin.get_url:
+    url: "{{ rclone_download_base }}/{{ rclone_zip_file }}"
+    dest: "/tmp/{{ rclone_zip_file }}"
+    checksum: "sha256:{{ rclone_expected_checksum.stdout | trim }}"
+    mode: '0644'
+  register: zip_download
+
+- name: Unarchive rclone zip
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ rclone_zip_file }}"
+    dest: "/tmp/"
+    remote_src: true
+    creates: "/tmp/rclone-v{{ rclone_version }}-linux-amd64/rclone"
+  when: zip_download.changed
+  notify: Clean up temporary rclone files
+
+- name: Install rclone binary to /usr/bin
+  ansible.builtin.copy:
+    src: "/tmp/rclone-v{{ rclone_version }}-linux-amd64/rclone"
+    dest: "{{ rclone_binary_path }}"
+    mode: '0755'
+    owner: root
+    group: root
+    remote_src: true
+  register: rclone_installed
+  notify: Clean up temporary rclone files
+
+- name: Verify rclone installation
+  ansible.builtin.command: "{{ rclone_binary_path }} version"
+  changed_when: false
+  register: rclone_version_check
+  failed_when: rclone_version_check.rc != 0 or rclone_version not in rclone_version_check.stdout
