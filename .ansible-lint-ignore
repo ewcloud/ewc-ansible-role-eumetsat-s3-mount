@@ -1,2 +1,3 @@
 tasks/main.yml yaml[line-length] # disable the line-length check
 tasks/main.yml no-handler # disable the no-handler check
+handlers/main.yml yaml[line-length] # disable the line-length check

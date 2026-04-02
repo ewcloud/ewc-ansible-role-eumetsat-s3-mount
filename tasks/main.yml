@@ -141,3 +141,118 @@
   changed_when: false
   register: rclone_version_check
   failed_when: rclone_version_check.rc != 0 or rclone_version not in rclone_version_check.stdout
+
+- name: Fill in rclone configuration access to EUMETSAT S3 buckets (publicly available within the EWC)
+  ansible.builtin.template:
+    src: rclone.conf.j2
+    dest: '{{ rclone_nonsecret_config_file }}'
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Ensure /etc/fuse.conf exists with correct permissions
+  ansible.builtin.file:
+    path: /etc/fuse.conf
+    state: touch
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Enable user_allow_other in /etc/fuse.conf (required for allow_other mounts)
+  ansible.builtin.lineinfile:
+    path: /etc/fuse.conf
+    regexp: '^#?\s*user_allow_other'
+    line: 'user_allow_other'
+    state: present
+    mode: '0644'
+  when: allow_other | bool
+  register: fuse_conf_updated
+
+- name: Ensure commented user_allow_other is removed if present (cleanup)
+  ansible.builtin.lineinfile:
+    path: /etc/fuse.conf
+    regexp: '^#\s*user_allow_other'
+    state: absent
+  when: allow_other | bool
+
+- name: Verify user_allow_other is enabled in fuse.conf
+  ansible.builtin.command: grep -E '^user_allow_other' /etc/fuse.conf
+  changed_when: false
+  register: fuse_verify
+  failed_when:
+    - allow_other | bool
+    - fuse_verify.rc != 0
+  when: allow_other | bool
+
+- name: Create main EUMETSAT data mount root directory
+  ansible.builtin.file:
+    path: "{{ eumetsat_mount_root }}"
+    state: directory
+    mode: '0555'
+    owner: root
+    group: root
+
+- name: Create per-bucket mount directories (read-only for all users)
+  ansible.builtin.file:
+    path: "{{ eumetsat_mount_root }}/{{ item.dest }}"
+    state: directory
+    mode: '0555'
+    owner: root
+    group: root
+  loop: "{{ buckets }}"
+  loop_control:
+    label: "{{ item.dest }}"
+
+- name: Create canonical rclone cache directory
+  ansible.builtin.file:
+    path: "{{ rclone_cache_dir }}"
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+
+- name: Ensure cache directory permissions are strict (re-apply if needed)
+  ansible.builtin.file:
+    path: "{{ rclone_cache_dir }}"
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+  when: not ansible_check_mode
+
+- name: Report directory creation status
+  ansible.builtin.debug:
+    msg: >
+      Directories created successfully:
+      Root: {{ eumetsat_mount_root }} (0555)
+      Cache: {{ rclone_cache_dir }} (0700)
+      Buckets: {{ buckets | length }} subdirectories
+  when:
+    - (ansible_facts.changed is defined and ansible_facts.changed)
+      or (lookup('ansible.builtin.pipe', 'echo changed') | default(false))
+  loop: "{{ buckets }}"
+  loop_control:
+    label: "Directory setup completed"
+
+- name: Template systemd .mount units (one per bucket)
+  ansible.builtin.template:
+    src: mount-unit.j2
+    dest: "/etc/systemd/system/eumetsatdata-{{ item.dest }}.mount"
+    mode: '0644'
+    owner: root
+    group: root
+  loop: "{{ buckets }}"
+  notify: Restart mount and automount units
+  register: mount_units_templated
+
+- name: Template systemd .automount units (when enabled)
+  ansible.builtin.template:
+    src: automount-unit.j2
+    dest: "/etc/systemd/system/eumetsatdata-{{ item.dest }}.automount"
+    mode: '0644'
+    owner: root
+    group: root
+  loop: "{{ buckets }}"
+  when: automount_enabled == 'yes'
+  notify: Restart mount and automount units
+  register: automount_units_templated

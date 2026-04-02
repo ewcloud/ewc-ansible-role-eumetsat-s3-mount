@@ -1,0 +1,47 @@
+---
+- name: Clean up temporary rclone files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/{{ rclone_zip_file }}"
+    - "/tmp/rclone-v{{ rclone_version }}-linux-amd64"
+    - "/tmp/rclone-SHA256SUMS-{{ rclone_version }}"
+
+- name: Restart mount and automount units
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+    daemon_reload: false # Already handled in tasks/main.yml at the point is needed
+  loop:
+    - "{{ (mount_units_templated.results | default([])) | selectattr('changed', 'equalto', true) | map(attribute='item.dest') | list | map('regex_replace', '^(.*)$', 'eumetsatdata-\\1.mount') }}"
+    - "{{ (automount_units_templated.results | default([])) | selectattr('changed', 'equalto', true) | map(attribute='item.dest') | list | map('regex_replace', '^(.*)$', 'eumetsatdata-\\1.automount') }}"
+  when:
+    - (mount_units_templated is changed) or (automount_units_templated is changed)
+  loop_control:
+    label: "Restarting unit {{ item }}"
+
+- name: Reload and restart specific mount unit
+  ansible.builtin.systemd:
+    name: "eumetsatdata-{{ item.dest }}.mount"
+    daemon_reload: true
+    state: restarted
+  loop: "{{ buckets }}"
+  when:
+    - mount_units_templated is defined
+    - mount_units_templated.changed | default(false)
+  loop_control:
+    label: "{{ item.dest }}.mount"
+
+- name: Reload and restart specific automount unit
+  ansible.builtin.systemd:
+    name: "eumetsatdata-{{ item.dest }}.automount"
+    daemon_reload: true
+    state: restarted
+  loop: "{{ buckets }}"
+  when:
+    - automount_enabled | bool
+    - automount_units_templated is defined
+    - automount_units_templated.changed | default(false)
+  loop_control:
+    label: "{{ item.dest }}.automount"
