@@ -1,0 +1,325 @@
+---
+- name: Validate that required variables are defined
+  ansible.builtin.assert:
+    that:
+      - eumetsat_mount_root is defined and eumetsat_mount_root is string and eumetsat_mount_root != ''
+      - allow_other is defined and allow_other is string and allow_other != ''
+      - vfs_cache_mode is defined and vfs_cache_mode is string and vfs_cache_mode != ''
+      - vfs_cache_max_size is defined and vfs_cache_max_size is string and vfs_cache_max_size != ''
+      - automount_enabled is defined and automount_enabled is string and automount_enabled != ''
+      - automount_timeout_idle_seconds is defined and automount_timeout_idle_seconds is string and automount_timeout_idle_seconds != ''
+    fail_msg: "Input validation failed. See README.md for information on required inputs and their format."
+    success_msg: "User input configuration is valid."
+
+- name: Validate each bucket destination name for systemd unit safety
+  ansible.builtin.assert:
+    that:
+      - item.dest is defined and item.dest | length > 0
+      - item.dest is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]*$')
+      # Systemd unit names must not start with . or contain / \ : ; etc.
+      - not (item.dest | regex_search('[/\\\\:;]'))
+    fail_msg: >
+      Invalid destination name "{{ item.dest }}" for bucket "{{ item.bucket | default('unknown') }}".
+      Destination names must:
+        - Be non-empty
+        - Start with alphanumeric character
+        - Contain only alphanumeric characters, underscore (_), dot (.), or hyphen (-)
+        - Not contain filesystem separators or systemd-reserved characters
+      Example of valid dest: "nwcsaf", "era5_ecmwf", "cloud_type"
+    loop: "{{ buckets }}"
+    loop_control:
+      label: "{{ item.dest | default('undefined') }}"
+
+- name: Validate update_freq format for each bucket
+  ansible.builtin.assert:
+    that:
+      - item.update_freq is defined and item.update_freq is match('^[0-9]+[mhd]$')
+    fail_msg: >
+      Invalid update_freq "{{ item.update_freq | default('undefined') }}"
+      for bucket "{{ item.bucket | default('unknown') }}".
+      Supported format: number followed by m (minutes), h (hours), or d (days).
+      Examples: "30m", "1m", "1440m", "24h"
+    loop: "{{ buckets }}"
+    loop_control:
+      label: "{{ item.dest | default('undefined') }}"
+
+- name: Verify Linux distribution
+  ansible.builtin.assert:
+    that:
+      - ( ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] in ['9', '8']) or (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_major_version'] in ['24', '22'])
+    fail_msg: "Supports RockyLinux 8, RockyLinux 9, Ubuntu 22 and Ubuntu 24. Detected: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}"
+    success_msg: "Running supported {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }} distribution."
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - "{{ item }}"
+    state: present
+    allow_downgrade: false
+  loop:
+    - fuse3
+    - fuse-overlayfs
+    - curl
+    - unzip
+
+- name: Ensure fuse3 is available and functional
+  ansible.builtin.command: fusermount3 -V
+  changed_when: false
+  register: fusermount_check
+  failed_when: fusermount_check.rc != 0
+
+- name: Ensure fusermount3 symlink exists (compatibility)
+  ansible.builtin.file:
+    src: /usr/bin/fusermount3
+    dest: /usr/bin/fusermount
+    state: link
+  when:
+    - fusermount_check.stdout is defined
+    - "'fusermount3' not in fusermount_check.stdout"
+
+- name: Initialize internal nobs for rclond installation
+  ansible.builtin.set_fact:
+    rclone_version: "1.73.3"
+    rclone_config_name: "eumetsat-data-buckets"
+    rclone_nonsecret_config_file: /etc/eum_data_bucket_mount_credentials
+    rclone_cache_dir: "/var/cache/rclone"
+
+- name: Determine rclone download URLs and checksum
+  ansible.builtin.set_fact:
+    rclone_download_base: "https://downloads.rclone.org/v{{ rclone_version }}"
+    rclone_zip_file: "rclone-v{{ rclone_version }}-linux-amd64.zip"
+    rclone_checksum_url: "https://downloads.rclone.org/v{{ rclone_version }}/SHA256SUMS"
+    rclone_binary_path: "/usr/bin/rclone"
+
+- name: Download rclone SHA256 checksum file
+  ansible.builtin.get_url:
+    url: "{{ rclone_checksum_url }}"
+    dest: "/tmp/rclone-SHA256SUMS-{{ rclone_version }}"
+    mode: '0644'
+    force: true
+  register: checksum_download
+
+- name: Extract expected SHA256 checksum for linux-amd64 zip
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -E 'linux-amd64\.zip$' /tmp/rclone-SHA256SUMS-{{ rclone_version }} | awk '{print $1}'
+  args:
+    executable: /bin/bash
+  register: rclone_expected_checksum
+  changed_when: true
+
+- name: Download rclone zip archive
+  ansible.builtin.get_url:
+    url: "{{ rclone_download_base }}/{{ rclone_zip_file }}"
+    dest: "/tmp/{{ rclone_zip_file }}"
+    checksum: "sha256:{{ rclone_expected_checksum.stdout | trim }}"
+    mode: '0644'
+  register: zip_download
+
+- name: Unarchive rclone zip
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ rclone_zip_file }}"
+    dest: "/tmp/"
+    remote_src: true
+    creates: "/tmp/rclone-v{{ rclone_version }}-linux-amd64/rclone"
+  when: zip_download.changed
+  notify: Clean up temporary rclone files
+
+- name: Install rclone binary to /usr/bin
+  ansible.builtin.copy:
+    src: "/tmp/rclone-v{{ rclone_version }}-linux-amd64/rclone"
+    dest: "{{ rclone_binary_path }}"
+    mode: '0755'
+    owner: root
+    group: root
+    remote_src: true
+  register: rclone_installed
+  notify: Clean up temporary rclone files
+
+- name: Verify rclone installation
+  ansible.builtin.command: "{{ rclone_binary_path }} version"
+  changed_when: false
+  register: rclone_version_check
+  failed_when: rclone_version_check.rc != 0 or rclone_version not in rclone_version_check.stdout
+
+- name: Fill in rclone configuration access to EUMETSAT S3 buckets (publicly available within the EWC)
+  ansible.builtin.template:
+    src: rclone.conf.j2
+    dest: '{{ rclone_nonsecret_config_file }}'
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Ensure /etc/fuse.conf exists with correct permissions
+  ansible.builtin.file:
+    path: /etc/fuse.conf
+    state: touch
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Enable user_allow_other in /etc/fuse.conf (required for allow_other mounts)
+  ansible.builtin.lineinfile:
+    path: /etc/fuse.conf
+    regexp: '^#?\s*user_allow_other'
+    line: 'user_allow_other'
+    state: present
+    mode: '0644'
+  when: allow_other | bool
+  register: fuse_conf_updated
+
+- name: Ensure commented user_allow_other is removed if present (cleanup)
+  ansible.builtin.lineinfile:
+    path: /etc/fuse.conf
+    regexp: '^#\s*user_allow_other'
+    state: absent
+  when: allow_other | bool
+
+- name: Verify user_allow_other is enabled in fuse.conf
+  ansible.builtin.command: grep -E '^user_allow_other' /etc/fuse.conf
+  changed_when: false
+  register: fuse_verify
+  failed_when:
+    - allow_other | bool
+    - fuse_verify.rc != 0
+  when: allow_other | bool
+
+- name: Create main EUMETSAT data mount root directory
+  ansible.builtin.file:
+    path: "{{ eumetsat_mount_root }}"
+    state: directory
+    mode: '0555'
+    owner: root
+    group: root
+
+- name: Create per-bucket mount directories (read-only for all users)
+  ansible.builtin.file:
+    path: "{{ eumetsat_mount_root }}/{{ item.dest }}"
+    state: directory
+    mode: '0555'
+    owner: root
+    group: root
+  loop: "{{ buckets }}"
+  loop_control:
+    label: "{{ item.dest }}"
+
+- name: Create canonical rclone cache directory
+  ansible.builtin.file:
+    path: "{{ rclone_cache_dir }}"
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+
+- name: Ensure cache directory permissions are strict (re-apply if needed)
+  ansible.builtin.file:
+    path: "{{ rclone_cache_dir }}"
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+  when: not ansible_check_mode
+
+- name: Report directory creation status
+  ansible.builtin.debug:
+    msg: >
+      Directories created successfully:
+      Root: {{ eumetsat_mount_root }} (0555)
+      Cache: {{ rclone_cache_dir }} (0700)
+      Buckets: {{ buckets | length }} subdirectories
+  when:
+    - (ansible_facts.changed is defined and ansible_facts.changed)
+      or (lookup('ansible.builtin.pipe', 'echo changed') | default(false))
+  loop: "{{ buckets }}"
+  loop_control:
+    label: "Directory setup completed"
+
+- name: Template systemd .mount units (one per bucket)
+  ansible.builtin.template:
+    src: mount-unit.j2
+    dest: "/etc/systemd/system/eumetsatdata-{{ item.dest }}.mount"
+    mode: '0644'
+    owner: root
+    group: root
+  loop: "{{ buckets }}"
+  notify: Restart mount and automount units
+  register: mount_units_templated
+
+- name: Template systemd .automount units (when enabled)
+  ansible.builtin.template:
+    src: automount-unit.j2
+    dest: "/etc/systemd/system/eumetsatdata-{{ item.dest }}.automount"
+    mode: '0644'
+    owner: root
+    group: root
+  loop: "{{ buckets }}"
+  when: automount_enabled == 'yes'
+  notify: Restart mount and automount units
+  register: automount_units_templated
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when:
+    - (mount_units_templated is changed) or (automount_units_templated is changed)
+
+- name: Enable and start .mount units
+  ansible.builtin.systemd:
+    name: "eumetsatdata-{{ item.dest }}.mount"
+    enabled: true
+    state: started
+  loop: "{{ buckets }}"
+  when: not automount_enabled == 'yes'
+
+- name: Enable and start .automount units (preferred for production)
+  ansible.builtin.systemd:
+    name: "eumetsatdata-{{ item.dest }}.automount"
+    enabled: true
+    state: started
+  loop: "{{ buckets }}"
+  when: automount_enabled == 'yes'
+
+- name: Gather package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: List installed package versions (RockyLinux)
+  ansible.builtin.debug:
+    msg:
+      - "fuse3: {{ ansible_facts.packages['fuse3'][0].version }}-{{ ansible_facts.packages['fuse3'][0].release }}"
+      - "curl: {{ ansible_facts.packages['curl'][0].version }}-{{ ansible_facts.packages['curl'][0].release }}"
+      - "fuse-overlayfs: {{ ansible_facts.packages['fuse-overlayfs'][0].version }}-{{ ansible_facts.packages['fuse-overlayfs'][0].release }}"
+      - "unzip: {{ ansible_facts.packages['unzip'][0].version }}-{{ ansible_facts.packages['unzip'][0].release }}"
+      - "rclone: {{ rclone_version }}"
+  when: ansible_facts['distribution'] == 'Rocky'
+
+- name: List installed package versions (Ubuntu)
+  ansible.builtin.debug:
+    msg:
+      - "fuse3: {{ ansible_facts.packages['fuse3'][0].version }}"
+      - "curl: {{ ansible_facts.packages['curl'][0].version }}"
+      - "fuse-overlayfs: {{ ansible_facts.packages['fuse-overlayfs'][0].version }}"
+      - "unzip: {{ ansible_facts.packages['unzip'][0].version }}"
+      - "rclone: {{ rclone_version }}"
+  when: ansible_facts['distribution'] == 'Ubuntu'
+
+- name: Temporary setup Trivy for SBOM auto-generation (standalone binary file at /tmp/trivy)
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /tmp
+    creates: /tmp/trivy
+  args:
+    executable: /bin/bash
+
+- name: Auto-generate SBOM (SPDX file at /sbom.json)
+  ansible.builtin.command:
+    cmd: ./trivy rootfs --pkg-types os --format spdx-json --output /sbom.json --scanners vuln /
+    chdir: /tmp
+  changed_when: true
+
+- name: Display S3 bucket mounting status
+  ansible.builtin.debug:
+    msg: >
+      eumetsat_s3_mount role completed successfully.
+      {{ buckets | length }} bucket(s) configured.

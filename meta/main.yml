@@ -1,0 +1,9 @@
+---
+galaxy_info:
+  author: European Weather Cloud
+  description: EUMETSAT S3 Mount
+  company: EUMETSAT
+  license: MIT
+  min_ansible_version: "2.14"
+  galaxy_tags: []
+dependencies: []
