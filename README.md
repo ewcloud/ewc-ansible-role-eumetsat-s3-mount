@@ -6,7 +6,7 @@ to customize your environment in the
 [European Weather Cloud (EWC)](https://europeanweather.cloud/).
 
 The template is designed to provide:
-* A secure, idempotent, and production-grade way to mount read-only EUMETSAT data buckets as `FUSE` filesystems on EWC compute instances running RockyLinux or Ubuntu.
+* A secure, idempotent, and production-grade way to mount read-only EUMETSAT data buckets as `FUSE` filesystems on EWC compute instances running RockyLinux 9 or Ubuntu 24.
 
 ## Copyright and License
 Copyright © EUMETSAT 2026.
@@ -96,19 +96,33 @@ ansible-playbook -i inventory.yml playbook.yml
 | automount_timeout_idle_seconds | Idle timeout (in seconds) after which an automount will be unmounted. Example: `600` | `integer` | n/a | yes |  
 
 
-## Final Environment
+## SW Bill of Materials (SBoM)
+
+Third-party components used in the resulting environment.
+
+### RockyLinux Environment
 
 The following components will be included in the resulting environment:
 
-| Component | Home URL |
-|------|---------|
-| fuse |  https://github.com/libfuse/libfuse/wiki  |
-| fuse3 | https://github.com/libfuse/libfuse/wiki  |
-| fuse-overlayfs | https://github.com/containers/fuse-overlayfs |
-| curl | https://curl.se/ |
-| unzip |  	http://www.info-zip.org/UnZip.html  |
-| rclone | https://rclone.org/ |
+| Component | Version | License | Home URL |
+|------|---------|---------|--------------|
+| curl | 7.76 | MIT | https://curl.se/ |
+| unzip | 6.0 | BSD | http://www.info-zip.org/UnZip.html |
+| fuse3 | 3.10  | GPL+ | http://fuse.sf.net |
+| fuse-overlayfs | 1.16 | GPLv3+ | https://github.com/containers/fuse-overlayfs |
+| rclone | 1.73 | MIT |	https://github.com/rclone/rclone |
 
+### Ubuntu Environment
+
+The following components will be included in the resulting environment:
+
+| Component | Version | License | Home URL |
+|------|---------|---------|--------------|
+| curl | 8.5 | MIT | https://curl.se/  |
+| unzip | 6.0  | BSD | http://www.info-zip.org/UnZip.html |
+| fuse3 | 3.14  | GPLv2+ | https://github.com/libfuse/libfuse/wiki |
+| fuse-overlayfs | 1.13 | GPLv3+ | https://github.com/containers/fuse-overlayfs  |
+| rclone | 1.73 | MIT |	https://github.com/rclone/rclone |
 
 ## Changelog
 All notable changes (i.e. fixes, features and breaking changes) are documented 
