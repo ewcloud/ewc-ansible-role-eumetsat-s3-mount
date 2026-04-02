@@ -278,3 +278,27 @@
     state: started
   loop: "{{ buckets }}"
   when: automount_enabled == 'yes'
+
+- name: Gather package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: List installed package versions (RockyLinux)
+  ansible.builtin.debug:
+    msg:
+      - "fuse3: {{ ansible_facts.packages['fuse3'][0].version }}-{{ ansible_facts.packages['fuse3'][0].release }}"
+      - "curl: {{ ansible_facts.packages['curl'][0].version }}-{{ ansible_facts.packages['curl'][0].release }}"
+      - "fuse-overlayfs: {{ ansible_facts.packages['fuse-overlayfs'][0].version }}-{{ ansible_facts.packages['fuse-overlayfs'][0].release }}"
+      - "unzip: {{ ansible_facts.packages['unzip'][0].version }}-{{ ansible_facts.packages['unzip'][0].release }}"
+      - "rclone: {{ rclone_version }}"
+  when: ansible_facts['distribution'] == 'Rocky'
+
+- name: List installed package versions (Ubuntu)
+  ansible.builtin.debug:
+    msg:
+      - "fuse3: {{ ansible_facts.packages['fuse3'][0].version }}"
+      - "curl: {{ ansible_facts.packages['curl'][0].version }}"
+      - "fuse-overlayfs: {{ ansible_facts.packages['fuse-overlayfs'][0].version }}"
+      - "unzip: {{ ansible_facts.packages['unzip'][0].version }}"
+      - "rclone: {{ rclone_version }}"
+  when: ansible_facts['distribution'] == 'Ubuntu'
