@@ -256,3 +256,25 @@
   when: automount_enabled == 'yes'
   notify: Restart mount and automount units
   register: automount_units_templated
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when:
+    - (mount_units_templated is changed) or (automount_units_templated is changed)
+
+- name: Enable and start .mount units
+  ansible.builtin.systemd:
+    name: "eumetsatdata-{{ item.dest }}.mount"
+    enabled: true
+    state: started
+  loop: "{{ buckets }}"
+  when: not automount_enabled == 'yes'
+
+- name: Enable and start .automount units (preferred for production)
+  ansible.builtin.systemd:
+    name: "eumetsatdata-{{ item.dest }}.automount"
+    enabled: true
+    state: started
+  loop: "{{ buckets }}"
+  when: automount_enabled == 'yes'
