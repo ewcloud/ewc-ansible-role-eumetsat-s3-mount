@@ -8,6 +8,20 @@ to customize your environment in the
 The template is designed to provide:
 * A secure, idempotent, and production-grade way to mount read-only EUMETSAT data buckets as `FUSE` filesystems on EWC compute instances running RockyLinux or Ubuntu.
 
+## Copyright and License
+Copyright © EUMETSAT 2026.
+
+The provided code and instructions are licensed under the [MIT license](./LICENSE).
+They are intended to automate the setup of an environment that includes 
+third-party software components.
+The usage and distribution terms of the resulting environment are 
+subject to the individual licenses of those third-party libraries.
+
+Users are responsible for reviewing and complying with the licenses of
+all third-party components included in the environment.
+
+Contact [EUMETSAT](http://www.eumetsat.int) for details on the usage and distribution terms.
+
 ## Features
 
 - Self-service access to EUMETSAT data publicly available within the EWC (no credentials required)
