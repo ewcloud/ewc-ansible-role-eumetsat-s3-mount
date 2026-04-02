@@ -1,0 +1,1 @@
+# EWC Ansible Role EUMETSAT S3 Mount
