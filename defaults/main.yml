@@ -1,0 +1,109 @@
+---
+buckets:
+  - bucket: cmsaf-cloud-type.meteosat-0-degree.level-2.netcdf-4
+    dest: cloud
+    update_freq: 30m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: iasi.metop-a.level-1c.native
+    dest: iasi
+    update_freq: 30m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: mviri.meteosat-0-degree.level-15.native
+    dest: mviri
+    update_freq: 30m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: nwc-saf.0-degree.level-2
+    dest: nwcsaf
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: nwc-saf.0-degree.level-2-2022
+    dest: nwcsaf_2022
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: nwc-saf.0-degree.level-2-2023
+    dest: nwcsaf_2023
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: nwc-saf.0-degree.level-2-2024
+    dest: nwcsaf_2024
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: nwc-saf.0-degree.level-2-2025
+    dest: nwcsaf_2025
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: nwc-saf.0-degree.level-2-2026
+    dest: nwcsaf_2026
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: nwc-saf.0-degree.level-2-cf
+    dest: nwcsaf_cf
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: seviri-meteosat-0-degree.fcdr.level15.netcdf
+    dest: seviri
+    update_freq: 1440m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: seviri-meteosat-41-5-degree.fcdr.level15.netcdf
+    dest: seviri-41
+    update_freq: 1440m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: seviri-meteosat-45-5-degree.fcdr.level15.netcdf
+    dest: seviri-45
+    update_freq: 1440m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: drought-and-vegetation.prototype-datacube.netcdf
+    dest: psdc
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: rainfall_accumulation.composite.opera.hdf5
+    dest: opera_rainfall_accumulation_hdf5
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: rainfall_rate.composite.opera.hdf5
+    dest: opera_rainfall_rate_hdf5
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: reflectivity.composite.opera.hdf5
+    dest: opera_reflectivity_hdf5
+    update_freq: 1m
+    dir_cache_time: 5m
+    vfs_cache_poll_interval: 30s
+
+  - bucket: era5.ecmwf.analyses-eo-subset.grib
+    dest: era5_ecmwf_analyses_eo_subset_grib
+    update_freq: 1440m
+    dir_cache_time: 24h
+    vfs_cache_poll_interval: 30m

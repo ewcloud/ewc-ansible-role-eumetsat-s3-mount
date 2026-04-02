@@ -1,0 +1,44 @@
+---
+- name: Validate that required variables are defined
+  ansible.builtin.assert:
+    that:
+      - eumetsat_mount_root is defined and eumetsat_mount_root is string and eumetsat_mount_root != ''
+      - allow_other is defined and allow_other is string and allow_other != ''
+      - vfs_cache_mode is defined and vfs_cache_mode is string and vfs_cache_mode != ''
+      - vfs_cache_max_size is defined and vfs_cache_max_size is string and vfs_cache_max_size != ''
+      - automount_enabled is defined and automount_enabled is string and automount_enabled != ''
+      - automount_timeout_idle_seconds is defined and automount_timeout_idle_seconds is string and automount_timeout_idle_seconds != ''
+    fail_msg: "Input validation failed. See README.md for information on required inputs and their format."
+    success_msg: "User input configuration is valid."
+
+- name: Validate each bucket destination name for systemd unit safety
+  ansible.builtin.assert:
+    that:
+      - item.dest is defined and item.dest | length > 0
+      - item.dest is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]*$')
+      # Systemd unit names must not start with . or contain / \ : ; etc.
+      - not (item.dest | regex_search('[/\\\\:;]'))
+    fail_msg: >
+      Invalid destination name "{{ item.dest }}" for bucket "{{ item.bucket | default('unknown') }}".
+      Destination names must:
+        - Be non-empty
+        - Start with alphanumeric character
+        - Contain only alphanumeric characters, underscore (_), dot (.), or hyphen (-)
+        - Not contain filesystem separators or systemd-reserved characters
+      Example of valid dest: "nwcsaf", "era5_ecmwf", "cloud_type"
+    loop: "{{ buckets }}"
+    loop_control:
+      label: "{{ item.dest | default('undefined') }}"
+
+- name: Validate update_freq format for each bucket
+  ansible.builtin.assert:
+    that:
+      - item.update_freq is defined and item.update_freq is match('^[0-9]+[mhd]$')
+    fail_msg: >
+      Invalid update_freq "{{ item.update_freq | default('undefined') }}"
+      for bucket "{{ item.bucket | default('unknown') }}".
+      Supported format: number followed by m (minutes), h (hours), or d (days).
+      Examples: "30m", "1m", "1440m", "24h"
+    loop: "{{ buckets }}"
+    loop_control:
+      label: "{{ item.dest | default('undefined') }}"
