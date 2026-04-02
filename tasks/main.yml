@@ -42,3 +42,10 @@
     loop: "{{ buckets }}"
     loop_control:
       label: "{{ item.dest | default('undefined') }}"
+
+- name: Verify Linux distribution
+  ansible.builtin.assert:
+    that:
+      - ( ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] in ['9', '8']) or (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_major_version'] in ['24', '22'])
+    fail_msg: "Supports RockyLinux 8, RockyLinux 9, Ubuntu 22 and Ubuntu 24. Detected: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}"
+    success_msg: "Running supported {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }} distribution."
