@@ -1,7 +1,4 @@
 ---
-eumetsat_mount_root: null
 allow_other: null
 vfs_cache_mode: null
 vfs_cache_max_size: null
-automount_enabled: null
-automount_timeout_idle_seconds: null

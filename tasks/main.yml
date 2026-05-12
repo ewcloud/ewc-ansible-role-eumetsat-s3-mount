@@ -2,46 +2,11 @@
 - name: Validate that required variables are defined
   ansible.builtin.assert:
     that:
-      - eumetsat_mount_root is defined and eumetsat_mount_root is string and eumetsat_mount_root != ''
       - allow_other is defined and allow_other is string and allow_other != ''
       - vfs_cache_mode is defined and vfs_cache_mode is string and vfs_cache_mode != ''
       - vfs_cache_max_size is defined and vfs_cache_max_size is string and vfs_cache_max_size != ''
-      - automount_enabled is defined and automount_enabled is string and automount_enabled != ''
-      - automount_timeout_idle_seconds is defined and automount_timeout_idle_seconds is string and automount_timeout_idle_seconds != ''
     fail_msg: "Input validation failed. See README.md for information on required inputs and their format."
     success_msg: "User input configuration is valid."
-
-- name: Validate each bucket destination name for systemd unit safety
-  ansible.builtin.assert:
-    that:
-      - item.dest is defined and item.dest | length > 0
-      - item.dest is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]*$')
-      # Systemd unit names must not start with . or contain / \ : ; etc.
-      - not (item.dest | regex_search('[/\\\\:;]'))
-    fail_msg: >
-      Invalid destination name "{{ item.dest }}" for bucket "{{ item.bucket | default('unknown') }}".
-      Destination names must:
-        - Be non-empty
-        - Start with alphanumeric character
-        - Contain only alphanumeric characters, underscore (_), dot (.), or hyphen (-)
-        - Not contain filesystem separators or systemd-reserved characters
-      Example of valid dest: "nwcsaf", "era5_ecmwf", "cloud_type"
-    loop: "{{ buckets }}"
-    loop_control:
-      label: "{{ item.dest | default('undefined') }}"
-
-- name: Validate update_freq format for each bucket
-  ansible.builtin.assert:
-    that:
-      - item.update_freq is defined and item.update_freq is match('^[0-9]+[mhd]$')
-    fail_msg: >
-      Invalid update_freq "{{ item.update_freq | default('undefined') }}"
-      for bucket "{{ item.bucket | default('unknown') }}".
-      Supported format: number followed by m (minutes), h (hours), or d (days).
-      Examples: "30m", "1m", "1440m", "24h"
-    loop: "{{ buckets }}"
-    loop_control:
-      label: "{{ item.dest | default('undefined') }}"
 
 - name: Verify Linux distribution
   ansible.builtin.assert:
@@ -76,17 +41,18 @@
     - unzip-6.0-58.el9_5
   when: ansible_facts['distribution'] == 'Rocky'
 
-- name: Ensure fuse3 is available and functional
+- name: Validate fuse3 is available and functional
   ansible.builtin.command: fusermount3 -V
   changed_when: false
   register: fusermount_check
   failed_when: fusermount_check.rc != 0
 
-- name: Ensure fusermount3 symlink exists (compatibility)
+- name: Create fusermount3 symlink
   ansible.builtin.file:
     src: /usr/bin/fusermount3
     dest: /usr/bin/fusermount
     state: link
+    mode: '0755'
   when:
     - fusermount_check.stdout is defined
     - "'fusermount3' not in fusermount_check.stdout"
@@ -150,11 +116,12 @@
   register: rclone_installed
   notify: Clean up temporary rclone files
 
-- name: Verify rclone installation
-  ansible.builtin.command: "{{ rclone_binary_path }} version"
-  changed_when: false
-  register: rclone_version_check
-  failed_when: rclone_version_check.rc != 0 or rclone_version not in rclone_version_check.stdout
+- name: Create mount.rclone symlink
+  ansible.builtin.file:
+    src: "{{ rclone_binary_path }}"
+    dest: /sbin/mount.rclone
+    state: link
+    mode: '0755'
 
 - name: Fill in rclone configuration access to EUMETSAT S3 buckets (publicly available within the EWC)
   ansible.builtin.template:
@@ -164,13 +131,19 @@
     owner: root
     group: root
 
-- name: Ensure /etc/fuse.conf exists with correct permissions
+- name: Stat per-bucket mount points to detect active FUSE mounts
+  ansible.builtin.stat:
+    path: /etc/fuse.conf
+  register: fuse_conf_stat
+
+- name: Create /etc/fuse.conf
   ansible.builtin.file:
     path: /etc/fuse.conf
     state: touch
     mode: '0644'
     owner: root
     group: root
+  when: not fuse_conf_stat.stat.exists
 
 - name: Enable user_allow_other in /etc/fuse.conf (required for allow_other mounts)
   ansible.builtin.lineinfile:
@@ -182,7 +155,7 @@
   when: allow_other | bool
   register: fuse_conf_updated
 
-- name: Ensure commented user_allow_other is removed if present (cleanup)
+- name: Validate commented user_allow_other is removed if present
   ansible.builtin.lineinfile:
     path: /etc/fuse.conf
     regexp: '^#\s*user_allow_other'
@@ -200,22 +173,31 @@
 
 - name: Create main EUMETSAT data mount root directory
   ansible.builtin.file:
-    path: "{{ eumetsat_mount_root }}"
+    path: "/mnt/eumetsatdata"
     state: directory
     mode: '0555'
     owner: root
     group: root
 
+- name: Stat per-bucket mount points to detect active FUSE mounts
+  ansible.builtin.stat:
+    path: "{{ eumetsat_mount_root }}/{{ item.dest }}"
+  register: bucket_stat
+  loop: "{{ buckets }}"
+  loop_control:
+    label: "{{ item.dest }}"
+
 - name: Create per-bucket mount directories (read-only for all users)
   ansible.builtin.file:
-    path: "{{ eumetsat_mount_root }}/{{ item.dest }}"
+    path: "{{ item.item.dest }}"
     state: directory
     mode: '0555'
     owner: root
     group: root
-  loop: "{{ buckets }}"
+  loop: "{{ bucket_stat.results }}"
+  when: (not item.stat.exists) or (item.stat.exists and item.stat.writeable)
   loop_control:
-    label: "{{ item.dest }}"
+    label: "{{ item.item.dest }}"
 
 - name: Create canonical rclone cache directory
   ansible.builtin.file:
@@ -225,7 +207,7 @@
     owner: root
     group: root
 
-- name: Ensure cache directory permissions are strict (re-apply if needed)
+- name: Validate cache directory permissions are strict (re-apply if needed)
   ansible.builtin.file:
     path: "{{ rclone_cache_dir }}"
     state: directory
@@ -234,64 +216,43 @@
     group: root
   when: not ansible_check_mode
 
-- name: Report directory creation status
-  ansible.builtin.debug:
-    msg: >
-      Directories created successfully:
-      Root: {{ eumetsat_mount_root }} (0555)
-      Cache: {{ rclone_cache_dir }} (0700)
-      Buckets: {{ buckets | length }} subdirectories
-  when:
-    - (ansible_facts.changed is defined and ansible_facts.changed)
-      or (lookup('ansible.builtin.pipe', 'echo changed') | default(false))
-  loop: "{{ buckets }}"
-  loop_control:
-    label: "Directory setup completed"
-
 - name: Template systemd .mount units (one per bucket)
   ansible.builtin.template:
     src: mount-unit.j2
-    dest: "/etc/systemd/system/eumetsatdata-{{ item.dest }}.mount"
+    dest: "/etc/systemd/system/mnt-eumetsatdata-{{ item.dest }}.mount"
     mode: '0644'
     owner: root
     group: root
   loop: "{{ buckets }}"
-  notify: Restart mount and automount units
+  loop_control:
+    label: "{{ item.dest }}"
+  notify: Restart mount units
   register: mount_units_templated
 
-- name: Template systemd .automount units (when enabled)
-  ansible.builtin.template:
-    src: automount-unit.j2
-    dest: "/etc/systemd/system/eumetsatdata-{{ item.dest }}.automount"
-    mode: '0644'
-    owner: root
-    group: root
+- name: Validate generated systemd mount units
+  ansible.builtin.command: systemd-analyze verify "mnt-eumetsatdata-{{ item.dest }}.mount"
+  changed_when: false
   loop: "{{ buckets }}"
-  when: automount_enabled == 'yes'
-  notify: Restart mount and automount units
-  register: automount_units_templated
+  register: unit_validation
+  loop_control:
+    label: "{{ item.dest }}"
 
 - name: Reload systemd daemon
   ansible.builtin.systemd:
     daemon_reload: true
   when:
-    - (mount_units_templated is changed) or (automount_units_templated is changed)
+    - mount_units_templated is changed
 
 - name: Enable and start .mount units
   ansible.builtin.systemd:
-    name: "eumetsatdata-{{ item.dest }}.mount"
+    name: "mnt-eumetsatdata-{{ item.dest }}.mount"
     enabled: true
     state: started
+    daemon_reload: true
   loop: "{{ buckets }}"
-  when: not automount_enabled == 'yes'
-
-- name: Enable and start .automount units (preferred for production)
-  ansible.builtin.systemd:
-    name: "eumetsatdata-{{ item.dest }}.automount"
-    enabled: true
-    state: started
-  loop: "{{ buckets }}"
-  when: automount_enabled == 'yes'
+  register: mount_start
+  loop_control:
+    label: "{{ item.dest }}"
 
 - name: Gather package facts
   ansible.builtin.package_facts:
@@ -334,6 +295,4 @@
 
 - name: Display S3 bucket mounting status
   ansible.builtin.debug:
-    msg: >
-      eumetsat_s3_mount role completed successfully.
-      {{ buckets | length }} bucket(s) configured.
+    msg: Successfully mounted {{ buckets | length }} bucket(s) under the /mnt directory
