@@ -10,8 +10,8 @@
 - name: Verify Linux distribution
   ansible.builtin.assert:
     that:
-      - ( ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] in ['9']) or (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_major_version'] in ['24'])
-    fail_msg: "Supports RockyLinux 9 and Ubuntu 24. Detected: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}"
+      - ( ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] in ['9', '8']) or (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_major_version'] in ['24', '22'])
+    fail_msg: "Supports RockyLinux 9, RockyLinux 8, Ubuntu 24 or Ubuntu 22. Detected: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}"
     success_msg: "Running supported {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }} distribution."
 
 - name: Install required packages (Ubuntu)
@@ -21,10 +21,10 @@
     state: present
     allow_downgrade: false
   loop:
-    - fuse3=3.14.0-5build1
-    - fuse-overlayfs=1.13-1
-    - curl=8.5.0-2ubuntu10.6
-    - unzip=6.0-28ubuntu4.1
+    - fuse3
+    - fuse-overlayfs
+    - curl
+    - unzip
   when: ansible_facts['distribution'] == 'Ubuntu'
 
 - name: Install required packages (RockyLinux)
@@ -34,10 +34,10 @@
     state: present
     allow_downgrade: false
   loop:
-    - fuse3-3.10.2-9.el9
-    - fuse-overlayfs-1.16-1.el9_7
-    - curl-7.76.1-31.el9_6.1
-    - unzip-6.0-58.el9_5
+    - fuse3
+    - fuse-overlayfs
+    - curl
+    - unzip
   when: ansible_facts['distribution'] == 'Rocky'
 
 - name: Validate fuse3 is available and functional
