@@ -1,5 +1,5 @@
 [Unit]
-Description=Mount EUMETSAT S3 bucket {{ item.bucket }} at {{ eumetsat_mount_root }}/{{ item.dest }}
+Description=Mount EUMETSAT S3 bucket {{ item.bucket }} at /mnt/eumetsatdata/{{ item.dest }}
 After=network-online.target
 Wants=network-online.target
 Documentation=https://rclone.org/commands/rclone_mount/
@@ -7,16 +7,8 @@ Documentation=https://rclone.org/commands/rclone_mount/
 [Mount]
 Type=rclone
 What={{ rclone_config_name }}:{{ item.bucket }}
-Where={{ eumetsat_mount_root }}/{{ item.dest }}
-Options=ro,\
-{% if allow_other | bool %}allow_other,{% endif %}\
-args2env,\
-vfs-cache-mode={{ vfs_cache_mode }},\
-config={{ rclone_nonsecret_config_file }},\
-cache-dir={{ cache_dir }},\
-vfs-cache-max-size={{ vfs_cache_max_size }},\
-vfs-cache-poll-interval={{ item.vfs_cache_poll_interval | default(item.update_freq) }},\
-dir-cache-time={{ item.dir_cache_time | default('1h') }}\
+Where=/mnt/eumetsatdata/{{ item.dest }}
+Options=ro,allow_other,args2env,vfs-cache-mode={{ vfs_cache_mode }},config={{ rclone_nonsecret_config_file }},cache-dir={{ rclone_cache_dir }},vfs-cache-max-size={{ vfs_cache_max_size }},vfs-cache-poll-interval={{ item.vfs_cache_poll_interval }},dir-cache-time={{ item.dir_cache_time }}
 
 [Install]
 WantedBy=multi-user.target

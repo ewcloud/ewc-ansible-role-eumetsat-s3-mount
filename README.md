@@ -6,7 +6,7 @@ to customize your environment in the
 [European Weather Cloud (EWC)](https://europeanweather.cloud/).
 
 The template is designed to provide:
-* A secure, idempotent, and production-grade way to mount read-only EUMETSAT data buckets as `FUSE` filesystems on EWC compute instances running RockyLinux 9 or Ubuntu 24.
+* A secure, idempotent, and production-grade way to mount read-only [EUMETSAT data buckets](https://confluence.ecmwf.int/x/FUEXHQ) as `FUSE` filesystems on EWC compute instances running RockyLinux 9 or Ubuntu 24.
 
 ## Copyright and License
 Copyright © EUMETSAT 2026.
@@ -86,14 +86,13 @@ ansible-playbook -i inventory.yml playbook.yml
 
 ## Inputs
 
+>💡 Buckets are pre-defined by default (see [defaults/main.yml](./defaults/main.yml)).
+
+
 | Name |  Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| eumetsat_mount_root | Root directory where all S3 buckets will be mounted (read-only). Example: `/mnt/eumetsatdata` | `string` | n/a | yes |
-| allow_other | Allow non-root access to the mounted directories. Only `yes` will be accepted to approve. Example: `yes` | `string`| n/a | yes |
-| vfs_cache_mode | Cache mode. Setting as `minimal` is recommended for read-only EO data. Example: `minimal` | `string` | n/a | yes |
+| vfs_cache_mode | Cache mode. Example: `writes` | `string` | n/a | yes |
 | vfs_cache_max_size | Max cache size. Example: `512Mi` | `string` | n/a | yes |
-| automount_enabled | Use on-demand automount (recommended). Only `yes` will be accepted to approve. Example: `yes`  | `string` |  n/a | yes |
-| automount_timeout_idle_seconds | Idle timeout (in seconds) after which an automount will be unmounted. Example: `600` | `integer` | n/a | yes |  
 
 
 ## SW Bill of Materials (SBoM)
