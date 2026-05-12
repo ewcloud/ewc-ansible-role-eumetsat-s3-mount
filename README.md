@@ -7,6 +7,7 @@ to customize your environment in the
 
 The template is designed to provide:
 * A secure, idempotent, and production-grade way to mount read-only [EUMETSAT data buckets](https://confluence.ecmwf.int/x/FUEXHQ) as `FUSE` filesystems on EWC compute instances running RockyLinux 9 or 8, and Ubuntu 24 or 22.
+* Support for instances on both the ECMWF and the EUMETSAT compute sites of the EWC
 
 ## Copyright and License
 Copyright © EUMETSAT 2026.
@@ -25,8 +26,7 @@ Contact [EUMETSAT](http://www.eumetsat.int) for details on the usage and distrib
 ## Features
 
 - Self-service access to EUMETSAT data publicly available within the EWC (no credentials required)
-- User-defined mounting location and configurable idle timeout
-- Strict file permissions for mounted directories
+- Strict file permissions for mounted subdirectories under the `/mnt` directory
 - Boot-safe design; does not block boot on `S3` outage
 - Advanced per-bucket cache/refresh tuning (via tweaking of included defaults)
 
@@ -86,13 +86,14 @@ ansible-playbook -i inventory.yml playbook.yml
 
 ## Inputs
 
->💡 Buckets are pre-defined by default (see [defaults/main.yml](./defaults/main.yml)).
+>⚙️ Target buckets are pre-defined as part of role defaults (see [defaults/main.yml](./defaults/main.yml)).
 
+> 💡 To learn more about the valid input values and their performance implications, checkout the [rclone official documentation](https://rclone.org/commands/rclone_mount/#vfs-file-caching)
 
 | Name |  Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | vfs_cache_mode | Cache mode. Example: `writes` | `string` | n/a | yes |
-| vfs_cache_max_size | Max cache size. Example: `512Mi` | `string` | n/a | yes |
+| vfs_cache_max_size | Max total size of objects in the cache. Example: `512Mi` | `string` | n/a | yes |
 
 
 ## Dependencies
