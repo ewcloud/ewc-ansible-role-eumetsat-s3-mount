@@ -163,7 +163,7 @@
 
 - name: Stat per-bucket mount points to detect active FUSE mounts
   ansible.builtin.stat:
-    path: "{{ eumetsat_mount_root }}/{{ item.dest }}"
+    path: "/mnt/eumetsatdata/{{ item.dest }}"
   register: bucket_stat
   loop: "{{ buckets }}"
   loop_control:
