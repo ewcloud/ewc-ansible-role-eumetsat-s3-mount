@@ -3,6 +3,13 @@
 All notable changes to this project are documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.1](https://github.com/ewcloud/ewc-ansible-role-eumetsat-s3-mount/compare/1.0.0...1.0.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* Remove dangling input vars ([#5](https://github.com/ewcloud/ewc-ansible-role-eumetsat-s3-mount/issues/5)) ([f62c848](https://github.com/ewcloud/ewc-ansible-role-eumetsat-s3-mount/commit/f62c848d467d6cb561766ea27254fc613beefd25))
+
 # 1.0.0 (2026-05-12)
 
 
