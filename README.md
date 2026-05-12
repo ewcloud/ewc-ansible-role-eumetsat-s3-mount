@@ -88,7 +88,6 @@ ansible-playbook -i inventory.yml playbook.yml
 
 | Name |  Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| allow_other | Allow non-root access to the mounted directories. Only `yes` will be accepted to approve. Example: `yes` | `string`| n/a | yes |
 | vfs_cache_mode | Cache mode. Setting as `minimal` is recommended for read-only EO data. Example: `minimal` | `string` | n/a | yes |
 | vfs_cache_max_size | Max cache size. Example: `512Mi` | `string` | n/a | yes |
 

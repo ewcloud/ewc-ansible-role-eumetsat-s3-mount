@@ -2,7 +2,6 @@
 - name: Validate that required variables are defined
   ansible.builtin.assert:
     that:
-      - allow_other is defined and allow_other is string and allow_other != ''
       - vfs_cache_mode is defined and vfs_cache_mode is string and vfs_cache_mode != ''
       - vfs_cache_max_size is defined and vfs_cache_max_size is string and vfs_cache_max_size != ''
     fail_msg: "Input validation failed. See README.md for information on required inputs and their format."
@@ -145,31 +144,14 @@
     group: root
   when: not fuse_conf_stat.stat.exists
 
-- name: Enable user_allow_other in /etc/fuse.conf (required for allow_other mounts)
+- name: Enable user_allow_other in /etc/fuse.conf
   ansible.builtin.lineinfile:
     path: /etc/fuse.conf
     regexp: '^#?\s*user_allow_other'
     line: 'user_allow_other'
     state: present
     mode: '0644'
-  when: allow_other | bool
   register: fuse_conf_updated
-
-- name: Validate commented user_allow_other is removed if present
-  ansible.builtin.lineinfile:
-    path: /etc/fuse.conf
-    regexp: '^#\s*user_allow_other'
-    state: absent
-  when: allow_other | bool
-
-- name: Verify user_allow_other is enabled in fuse.conf
-  ansible.builtin.command: grep -E '^user_allow_other' /etc/fuse.conf
-  changed_when: false
-  register: fuse_verify
-  failed_when:
-    - allow_other | bool
-    - fuse_verify.rc != 0
-  when: allow_other | bool
 
 - name: Create main EUMETSAT data mount root directory
   ansible.builtin.file:
